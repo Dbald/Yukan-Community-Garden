@@ -88,6 +88,7 @@
         gltf-model="#garden"
         visible="false"
         scale="0.4 0.4 0.4"
+        pinch-scale
       ></a-entity>
     </a-scene>
 
@@ -251,6 +252,82 @@
           this.model.setAttribute("visible", "true");
         },
       });
+
+      AFRAME.registerComponent("pinch-scale", {
+    schema: {
+      min: { type: "number", default: 0.05 }, // minimum overall scale
+      max: { type: "number", default: 5.0 },  // maximum overall scale
+    },
+
+    init: function () {
+      this.initialDistance = null;
+      this.initialScale = 1;
+      this.currentScale = this.el.object3D.scale.x;
+
+      this.handleTouchStart = this.onTouchStart.bind(this);
+      this.handleTouchMove = this.onTouchMove.bind(this);
+      this.handleTouchEnd = this.onTouchEnd.bind(this);
+
+      // Wait until the canvas is ready
+      this.el.sceneEl.addEventListener("render-target-loaded", () => {
+        const canvas = this.el.sceneEl.canvas;
+        if (!canvas) return;
+
+        canvas.addEventListener("touchstart", this.handleTouchStart, { passive: false });
+        canvas.addEventListener("touchmove", this.handleTouchMove, { passive: false });
+        canvas.addEventListener("touchend", this.handleTouchEnd, { passive: false });
+        canvas.addEventListener("touchcancel", this.handleTouchEnd, { passive: false });
+      });
+    },
+
+    remove: function () {
+      const canvas = this.el.sceneEl && this.el.sceneEl.canvas;
+      if (!canvas) return;
+
+      canvas.removeEventListener("touchstart", this.handleTouchStart);
+      canvas.removeEventListener("touchmove", this.handleTouchMove);
+      canvas.removeEventListener("touchend", this.handleTouchEnd);
+      canvas.removeEventListener("touchcancel", this.handleTouchEnd);
+    },
+
+    getDistance: function (touches) {
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    },
+
+    onTouchStart: function (e) {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        this.initialDistance = this.getDistance(e.touches);
+        this.currentScale = this.el.object3D.scale.x; // assuming uniform scale
+        this.initialScale = this.currentScale;
+      }
+    },
+
+    onTouchMove: function (e) {
+      if (e.touches.length === 2 && this.initialDistance !== null) {
+        e.preventDefault();
+        const newDistance = this.getDistance(e.touches);
+        const factor = newDistance / this.initialDistance;
+
+        let newScale = this.initialScale * factor;
+
+        // Clamp scale
+        const min = this.data.min;
+        const max = this.data.max;
+        newScale = Math.max(min, Math.min(max, newScale));
+
+        this.el.object3D.scale.set(newScale, newScale, newScale);
+      }
+    },
+
+    onTouchEnd: function (e) {
+      if (e.touches.length < 2) {
+        this.initialDistance = null;
+      }
+    },
+  });
     </script>
   </body>
 </html>
