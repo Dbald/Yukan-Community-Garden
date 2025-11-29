@@ -65,9 +65,9 @@
 </head>
 
 <body>
-    <div id="enter-ar-hint">
+    <!-- <div id="enter-ar-hint">
         Tap the AR button. If you see a ring, move your device to find a surface, then tap to place.
-    </div>
+    </div> -->
     <div id="scale-controls">
         <button id="scale-down">–</button>
         <span>Resize garden</span>
@@ -99,174 +99,198 @@
             material="color: #00ff99; shader: flat; opacity: 0.9" rotation="-90 0 0" visible="false"></a-entity>
 
         <!-- Model: hidden at first; will be shown when placed / fallback triggers -->
-        <a-entity id="garden-model" gltf-model="#garden" visible="false" scale="0.4 0.4 0.4" pinch-scale></a-entity>
+        <a-entity id="garden-model" gltf-model="#garden" visible="false" scale="0.4 0.4 0.4"></a-entity>
     </a-scene>
 
     <script>
         // devinci-hit-test: tap-to-place with graceful fallback
-        AFRAME.registerComponent("devinci-hit-test", {
-            init: function () {
-                const sceneEl = this.el; // a-scene
-                this.xrSession = null;
-                this.viewerSpace = null;
-                this.refSpace = null;
-                this.hitTestSource = null;
-                this.useHitTest = false;
-                this.hasPlaced = false;
+  AFRAME.registerComponent("devinci-hit-test", {
+    init: function () {
+      const sceneEl = this.el; // a-scene
+      this.xrSession = null;
+      this.viewerSpace = null;
+      this.refSpace = null;
+      this.hitTestSource = null;
+      this.useHitTest = false;
+      this.hasPlaced = false;
 
-                this.reticle = document.querySelector("#reticle");
-                this.model = document.querySelector("#garden-model");
-                this.hintEl = document.getElementById("enter-ar-hint");
+      this.reticle = document.querySelector("#reticle");
+      this.model = document.querySelector("#garden-model");
+      this.hintEl = document.getElementById("enter-ar-hint");
 
-                this._onSelect = this.onSelect.bind(this);
+      this._onSelect = this.onSelect.bind(this);
 
-                sceneEl.addEventListener("enter-vr", () => {
-                    if (sceneEl.is("ar-mode")) {
-                        this.startAR();
-                    }
-                });
+      sceneEl.addEventListener("enter-vr", () => {
+        // In A-Frame, AR also fires enter-vr
+        if (sceneEl.is("ar-mode")) {
+          this.startAR();
+        }
+      });
 
-                sceneEl.addEventListener("exit-vr", () => {
-                    this.stopAR();
-                });
-            },
+      sceneEl.addEventListener("exit-vr", () => {
+        this.stopAR();
+      });
+    },
 
-            startAR: async function () {
-                const renderer = this.el.renderer;
-                if (!renderer || !renderer.xr) {
-                    console.warn("No WebXR renderer available");
-                    return;
-                }
+    startAR: async function () {
+      const renderer = this.el.renderer;
+      if (!renderer || !renderer.xr) {
+        console.warn("No WebXR renderer available");
+        return;
+      }
 
-                const session = renderer.xr.getSession();
-                if (!session) {
-                    console.warn("No XR session");
-                    return;
-                }
+      const session = renderer.xr.getSession();
+      if (!session) {
+        console.warn("No XR session");
+        return;
+      }
 
-                this.xrSession = session;
+      this.xrSession = session;
 
-                try {
-                    const viewerSpace = await session
-                        .requestReferenceSpace("viewer")
-                        .catch(() => null);
-                    if (!viewerSpace) {
-                        throw new Error("viewer reference space not supported");
-                    }
+      try {
+        const viewerSpace = await session
+          .requestReferenceSpace("viewer")
+          .catch(() => null);
+        if (!viewerSpace) {
+          throw new Error("viewer reference space not supported");
+        }
 
-                    this.viewerSpace = viewerSpace;
-                    this.refSpace = await session.requestReferenceSpace("local");
+        this.viewerSpace = viewerSpace;
+        this.refSpace = await session.requestReferenceSpace("local");
 
-                    this.hitTestSource = await session.requestHitTestSource({
-                        space: this.viewerSpace,
-                    });
-
-                    this.useHitTest = true;
-                    console.log("Hit-test enabled");
-
-                    if (this.hintEl) {
-                        this.hintEl.textContent =
-                            "Move your device to find a surface. When you see the ring, tap once to place.";
-                    }
-                } catch (e) {
-                    console.warn("Hit-test not available, using simple placement fallback:", e);
-                    this.useHitTest = false;
-
-                    // Fallback: drop the garden ~2m in front of the camera
-                    const cam = document.querySelector("#camera");
-                    if (cam) {
-                        const camObj = cam.object3D;
-                        const modelObj = this.model.object3D;
-
-                        modelObj.position.set(0, 0, -2);
-                        camObj.localToWorld(modelObj.position);
-
-                        this.model.setAttribute("visible", "true");
-                        this.hasPlaced = true;
-                    }
-
-                    if (this.hintEl) {
-                        this.hintEl.textContent =
-                            "AR running (no plane detection on this device). Garden placed in front of you.";
-                    }
-                }
-
-                // Listen for taps (single placement)
-                session.addEventListener("select", this._onSelect);
-
-                // Let A-Frame handle its own render loop; we only update reticle in tick
-                const self = this;
-                this.el.sceneEl.addEventListener("renderstart", function () {
-                    renderer.setAnimationLoop(function (time, frame) {
-                        self.onXRFrame(time, frame);
-                        self.el.render();
-                    });
-                });
-            },
-
-            stopAR: function () {
-                if (!this.xrSession) return;
-                this.xrSession.removeEventListener("select", this._onSelect);
-                this.xrSession = null;
-                this.hitTestSource = null;
-                this.viewerSpace = null;
-                this.refSpace = null;
-                this.reticle.setAttribute("visible", "false");
-                this.hasPlaced = false;
-            },
-
-            onXRFrame: function (time, frame) {
-                if (!this.useHitTest) return;
-
-                const session = this.xrSession;
-                if (!session || !this.hitTestSource) return;
-
-                const referenceSpace = this.refSpace;
-                const hitTestResults = frame.getHitTestResults(this.hitTestSource);
-
-                if (hitTestResults.length > 0) {
-                    const hit = hitTestResults[0];
-                    const pose = hit.getPose(referenceSpace);
-                    if (!pose) return;
-
-                    const position = pose.transform.position;
-                    const orientation = pose.transform.orientation;
-
-                    this.reticle.object3D.position.set(
-                        position.x,
-                        position.y,
-                        position.z
-                    );
-                    this.reticle.object3D.quaternion.set(
-                        orientation.x,
-                        orientation.y,
-                        orientation.z,
-                        orientation.w
-                    );
-
-                    this.reticle.setAttribute("visible", true);
-                } else {
-                    this.reticle.setAttribute("visible", false);
-                }
-            },
-
-            onSelect: function () {
-                // If no hit-test, we already placed via fallback
-                if (!this.useHitTest) return;
-                if (this.hasPlaced) return; // only place once
-
-                if (!this.reticle.getAttribute("visible")) return;
-
-                const reticleObj = this.reticle.object3D;
-                const modelObj = this.model.object3D;
-
-                modelObj.position.copy(reticleObj.position);
-                modelObj.quaternion.copy(reticleObj.quaternion);
-
-                this.model.setAttribute("visible", "true");
-                this.hasPlaced = true;
-            },
+        this.hitTestSource = await session.requestHitTestSource({
+          space: this.viewerSpace,
         });
+
+        this.useHitTest = true;
+        console.log("Hit-test enabled");
+
+        if (this.hintEl) {
+          this.hintEl.textContent =
+            "Move your device to find a surface. When you see the ring, tap once to place.";
+        }
+      } catch (e) {
+        console.warn("Hit-test not available, using simple placement fallback:", e);
+        this.useHitTest = false;
+
+        // Fallback: drop the garden ~2m in front of the camera
+        const cam = document.querySelector("#camera");
+        if (cam) {
+          const camObj = cam.object3D;
+          const modelObj = this.model.object3D;
+
+          modelObj.position.set(0, 0, -2);
+          camObj.localToWorld(modelObj.position);
+
+          this.model.setAttribute("visible", true);
+          this.hasPlaced = true;
+        }
+
+        if (this.hintEl) {
+          this.hintEl.textContent =
+            "AR running (no plane detection on this device). Garden placed in front of you.";
+        }
+      }
+
+      // Listen for taps (single placement)
+      session.addEventListener("select", this._onSelect);
+
+      // Hook our frame handler into WebXR
+      renderer.setAnimationLoop(this.onXRFrame.bind(this));
+    },
+
+    stopAR: function () {
+      if (!this.xrSession) return;
+      this.xrSession.removeEventListener("select", this._onSelect);
+      this.xrSession = null;
+      this.hitTestSource = null;
+      this.viewerSpace = null;
+      this.refSpace = null;
+      this.reticle.setAttribute("visible", false);
+      this.hasPlaced = false;
+    },
+
+    onXRFrame: function (time, frame) {
+      if (!this.useHitTest) return;
+
+      const session = this.xrSession;
+      if (!session || !this.hitTestSource) return;
+
+      const referenceSpace = this.refSpace;
+      const hitTestResults = frame.getHitTestResults(this.hitTestSource);
+
+      if (hitTestResults.length > 0) {
+        const hit = hitTestResults[0];
+        const pose = hit.getPose(referenceSpace);
+        if (!pose) return;
+
+        const position = pose.transform.position;
+        const orientation = pose.transform.orientation;
+
+        this.reticle.object3D.position.set(
+          position.x,
+          position.y,
+          position.z
+        );
+        this.reticle.object3D.quaternion.set(
+          orientation.x,
+          orientation.y,
+          orientation.z,
+          orientation.w
+        );
+
+        this.reticle.setAttribute("visible", true);
+      } else {
+        this.reticle.setAttribute("visible", false);
+      }
+    },
+
+    onSelect: function () {
+      // If no hit-test, we already placed via fallback
+      if (!this.useHitTest) return;
+      if (this.hasPlaced) return; // only place once
+
+      if (!this.reticle.getAttribute("visible")) return;
+
+      const reticleObj = this.reticle.object3D;
+      const modelObj = this.model.object3D;
+
+      modelObj.position.copy(reticleObj.position);
+      modelObj.quaternion.copy(reticleObj.quaternion);
+
+      this.model.setAttribute("visible", true);
+      this.hasPlaced = true;
+    },
+  });
+
+  // Resize controls (unchanged)
+  (function () {
+    const model = document.querySelector("#garden-model");
+    const btnUp = document.getElementById("scale-up");
+    const btnDown = document.getElementById("scale-down");
+    if (!model || !btnUp || !btnDown) return;
+
+    let currentScale = model.object3D.scale.x || 0.4; // assume uniform
+    const min = 0.05;
+    const max = 10.0;
+    const step = 0.1;
+
+    function applyScale(newScale) {
+      newScale = Math.max(min, Math.min(max, newScale));
+      model.object3D.scale.set(newScale, newScale, newScale);
+      currentScale = newScale;
+    }
+
+    btnUp.addEventListener("click", (e) => {
+      e.stopPropagation(); // don't trigger XR select
+      applyScale(currentScale + step);
+    });
+
+    btnDown.addEventListener("click", (e) => {
+      e.stopPropagation();
+      applyScale(currentScale - step);
+    });
+  })();
 
         (function () {
             const model = document.querySelector("#garden-model");
