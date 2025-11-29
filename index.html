@@ -66,7 +66,6 @@
     <a-scene
       embedded
       renderer="colorManagement: true; physicallyCorrectLights: true"
-      xr-mode-ui="enabled: true; enterARButton: true; enterVRButton: false"
       webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: body"
       vr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: true"
@@ -87,8 +86,9 @@
         <!-- Replace with your own 3D model -->
         <a-asset-item
           id="garden"
-          src="/assets/final_map_1.glb"
+          src="/assets/DC_intersection.glb"
         ></a-asset-item>
+        </a-assets>
       <!-- Simple lighting for the model -->
       <a-entity light="type: ambient; intensity: 0.6"></a-entity>
       <a-entity
