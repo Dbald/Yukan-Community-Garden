@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>A-Frame AR Model Template</title>
+    <title>Yukon Garden AR – Tap to Place</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
     <!-- A-Frame -->
@@ -27,27 +27,31 @@
         font-size: 14px;
         z-index: 10;
         pointer-events: none;
+        text-align: center;
       }
     </style>
   </head>
 
   <body>
-    <div id="enter-ar-hint">Tap the AR button, then tap to place the model</div>
+    <div id="enter-ar-hint">
+      Tap the AR button. If you see a ring, move your device to find a surface, then tap to place.
+    </div>
 
     <a-scene
       embedded
       renderer="colorManagement: true; physicallyCorrectLights: true"
       webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: body"
-      xr-mode-ui="XRMode: ar; enterAREnabled: true; enterVREnabled: false"
+      xr-mode-ui="enabled: true; XRMode: ar"
       vr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: true"
+      devinci-hit-test
     >
       <!-- Camera -->
       <a-entity id="cameraRig">
         <a-entity
           id="camera"
           camera
-          position="0 1.6 0"
+          position="0 1.6 3"
           wasd-controls-enabled="false"
           look-controls="pointerLockEnabled: false; touchEnabled: true"
         ></a-entity>
@@ -55,21 +59,21 @@
 
       <!-- Assets -->
       <a-assets>
-        <!-- Adjust this path to your GLB location -->
+        <!-- Update this path if needed -->
         <a-asset-item
           id="garden"
           src="assets/DC_intersection.glb"
         ></a-asset-item>
       </a-assets>
 
-      <!-- Lighting -->
+      <!-- Lights -->
       <a-entity light="type: ambient; intensity: 0.6"></a-entity>
       <a-entity
         light="type: directional; intensity: 0.8"
         position="0 4 4"
       ></a-entity>
 
-      <!-- Reticle (hit-test target) -->
+      <!-- Reticle (for hit-test) -->
       <a-entity
         id="reticle"
         geometry="primitive: ring; radiusInner: 0.15; radiusOuter: 0.2"
@@ -78,9 +82,9 @@
         visible="false"
       ></a-entity>
 
-      <!-- Model (hidden until placed in AR) -->
+      <!-- Model: hidden at first; will be shown when placed / fallback triggers -->
       <a-entity
-        id="ar-model"
+        id="garden-model"
         gltf-model="#garden"
         visible="false"
         scale="0.4 0.4 0.4"
@@ -88,20 +92,24 @@
     </a-scene>
 
     <script>
-      // Hit-test + tap-to-place component
-      AFRAME.registerComponent("ar-hit-test", {
+      // devinci-hit-test: tap-to-place with graceful fallback
+      AFRAME.registerComponent("devinci-hit-test", {
         init: function () {
           const sceneEl = this.el; // a-scene
           this.xrSession = null;
           this.viewerSpace = null;
           this.refSpace = null;
           this.hitTestSource = null;
+          this.useHitTest = false;
+
           this.reticle = document.querySelector("#reticle");
-          this.model = document.querySelector("#ar-model");
+          this.model = document.querySelector("#garden-model");
+          this.hintEl = document.getElementById("enter-ar-hint");
+
           this._onSelect = this.onSelect.bind(this);
 
           sceneEl.addEventListener("enter-vr", () => {
-            // In A-Frame, AR also emits enter-vr when XR starts
+            // A-Frame fires enter-vr for AR sessions too
             if (sceneEl.is("ar-mode")) {
               this.startAR();
             }
@@ -127,32 +135,62 @@
 
           this.xrSession = session;
 
-          // Viewer reference space
-          const viewerSpace = await session
-            .requestReferenceSpace("viewer")
-            .catch(() => null);
-          if (!viewerSpace) {
-            console.warn("Viewer reference space not supported.");
-            return;
+          // Try to set up hit-test
+          try {
+            const viewerSpace = await session
+              .requestReferenceSpace("viewer")
+              .catch(() => null);
+            if (!viewerSpace) {
+              throw new Error("viewer reference space not supported");
+            }
+
+            this.viewerSpace = viewerSpace;
+            this.refSpace = await session.requestReferenceSpace("local");
+
+            this.hitTestSource = await session.requestHitTestSource({
+              space: this.viewerSpace,
+            });
+
+            this.useHitTest = true;
+            console.log("Hit-test enabled");
+
+            if (this.hintEl) {
+              this.hintEl.textContent =
+                "Move your device to find a surface. When you see the ring, tap to place the garden.";
+            }
+          } catch (e) {
+            console.warn("Hit-test not available, using simple placement fallback:", e);
+            this.useHitTest = false;
+
+            // Fallback: drop the garden ~2m in front of the camera
+            const cam = document.querySelector("#camera");
+            if (cam) {
+              const camObj = cam.object3D;
+              const modelObj = this.model.object3D;
+
+              modelObj.position.set(0, 0, -2); // in front of camera
+              camObj.localToWorld(modelObj.position);
+
+              this.model.setAttribute("visible", "true");
+            }
+
+            if (this.hintEl) {
+              this.hintEl.textContent =
+                "AR running (no plane detection on this device). Garden placed in front of you.";
+            }
           }
 
-          this.viewerSpace = viewerSpace;
-          this.refSpace = await session.requestReferenceSpace("local");
-
-          // Hit-test source
-          this.hitTestSource = await session.requestHitTestSource({
-            space: this.viewerSpace,
-          });
-
-          // Tap listener
+          // Listen for taps (only does something when hit-test is active)
           session.addEventListener("select", this._onSelect);
 
-          // Hide hint once AR is active
-          const hint = document.getElementById("enter-ar-hint");
-          if (hint) hint.style.display = "none";
-
-          // Use XR frame loop
-          renderer.setAnimationLoop(this.onXRFrame.bind(this));
+          // Use our own XR frame loop for hit-test
+          const self = this;
+          renderer.setAnimationLoop(function (time, frame) {
+            if (self.useHitTest) {
+              self.onXRFrame(time, frame);
+            }
+            self.el.render(); // Let A-Frame render the scene
+          });
         },
 
         stopAR: function () {
@@ -166,6 +204,8 @@
         },
 
         onXRFrame: function (time, frame) {
+          if (!this.useHitTest) return;
+
           const session = this.xrSession;
           if (!session || !this.hitTestSource) return;
 
@@ -199,6 +239,7 @@
         },
 
         onSelect: function () {
+          if (!this.useHitTest) return;
           if (!this.reticle.getAttribute("visible")) return;
 
           const reticleObj = this.reticle.object3D;
@@ -210,9 +251,6 @@
           this.model.setAttribute("visible", "true");
         },
       });
-
-      // Attach hit-test behavior to the scene
-      document.querySelector("a-scene").setAttribute("ar-hit-test", "");
     </script>
   </body>
 </html>
