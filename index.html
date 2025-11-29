@@ -2,40 +2,217 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>A-Frame Simple AR</title>
+    <title>A-Frame AR Model Template</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- A-Frame -->
     <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
+
     <style>
-      body { margin: 0; overflow: hidden; background: #000; }
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #000;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      #enter-ar-hint {
+        position: absolute;
+        left: 50%;
+        bottom: 16px;
+        transform: translateX(-50%);
+        padding: 8px 16px;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.65);
+        color: #fff;
+        font-size: 14px;
+        z-index: 10;
+        pointer-events: none;
+      }
     </style>
   </head>
+
   <body>
+    <div id="enter-ar-hint">Tap the AR button, then tap to place the model</div>
+
     <a-scene
+      embedded
       renderer="colorManagement: true; physicallyCorrectLights: true"
       webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: body"
-      xr-mode-ui="enabled: true; XRMode: ar"
+      xr-mode-ui="XRMode: ar; enterAREnabled: true; enterVREnabled: false"
       vr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: true"
     >
       <!-- Camera -->
-      <a-entity camera position="0 1.6 3"></a-entity>
+      <a-entity id="cameraRig">
+        <a-entity
+          id="camera"
+          camera
+          position="0 1.6 0"
+          wasd-controls-enabled="false"
+          look-controls="pointerLockEnabled: false; touchEnabled: true"
+        ></a-entity>
+      </a-entity>
 
       <!-- Assets -->
       <a-assets>
-        <a-asset-item id="garden" src="assets/DC_intersection.glb"></a-asset-item>
+        <!-- Adjust this path to your GLB location -->
+        <a-asset-item
+          id="garden"
+          src="assets/DC_intersection.glb"
+        ></a-asset-item>
       </a-assets>
 
-      <!-- Lights -->
+      <!-- Lighting -->
       <a-entity light="type: ambient; intensity: 0.6"></a-entity>
-      <a-entity light="type: directional; intensity: 0.8" position="0 4 4"></a-entity>
+      <a-entity
+        light="type: directional; intensity: 0.8"
+        position="0 4 4"
+      ></a-entity>
 
-      <!-- Model always visible, so you see it in 3D and in AR -->
+      <!-- Reticle (hit-test target) -->
+      <a-entity
+        id="reticle"
+        geometry="primitive: ring; radiusInner: 0.15; radiusOuter: 0.2"
+        material="color: #00ff99; shader: flat; opacity: 0.9"
+        rotation="-90 0 0"
+        visible="false"
+      ></a-entity>
+
+      <!-- Model (hidden until placed in AR) -->
       <a-entity
         id="ar-model"
         gltf-model="#garden"
-        position="0 0 -2"
+        visible="false"
         scale="0.4 0.4 0.4"
       ></a-entity>
     </a-scene>
+
+    <script>
+      // Hit-test + tap-to-place component
+      AFRAME.registerComponent("ar-hit-test", {
+        init: function () {
+          const sceneEl = this.el; // a-scene
+          this.xrSession = null;
+          this.viewerSpace = null;
+          this.refSpace = null;
+          this.hitTestSource = null;
+          this.reticle = document.querySelector("#reticle");
+          this.model = document.querySelector("#ar-model");
+          this._onSelect = this.onSelect.bind(this);
+
+          sceneEl.addEventListener("enter-vr", () => {
+            // In A-Frame, AR also emits enter-vr when XR starts
+            if (sceneEl.is("ar-mode")) {
+              this.startAR();
+            }
+          });
+
+          sceneEl.addEventListener("exit-vr", () => {
+            this.stopAR();
+          });
+        },
+
+        startAR: async function () {
+          const renderer = this.el.renderer;
+          if (!renderer || !renderer.xr) {
+            console.warn("No WebXR renderer available");
+            return;
+          }
+
+          const session = renderer.xr.getSession();
+          if (!session) {
+            console.warn("No XR session");
+            return;
+          }
+
+          this.xrSession = session;
+
+          // Viewer reference space
+          const viewerSpace = await session
+            .requestReferenceSpace("viewer")
+            .catch(() => null);
+          if (!viewerSpace) {
+            console.warn("Viewer reference space not supported.");
+            return;
+          }
+
+          this.viewerSpace = viewerSpace;
+          this.refSpace = await session.requestReferenceSpace("local");
+
+          // Hit-test source
+          this.hitTestSource = await session.requestHitTestSource({
+            space: this.viewerSpace,
+          });
+
+          // Tap listener
+          session.addEventListener("select", this._onSelect);
+
+          // Hide hint once AR is active
+          const hint = document.getElementById("enter-ar-hint");
+          if (hint) hint.style.display = "none";
+
+          // Use XR frame loop
+          renderer.setAnimationLoop(this.onXRFrame.bind(this));
+        },
+
+        stopAR: function () {
+          if (!this.xrSession) return;
+          this.xrSession.removeEventListener("select", this._onSelect);
+          this.xrSession = null;
+          this.hitTestSource = null;
+          this.viewerSpace = null;
+          this.refSpace = null;
+          this.reticle.setAttribute("visible", "false");
+        },
+
+        onXRFrame: function (time, frame) {
+          const session = this.xrSession;
+          if (!session || !this.hitTestSource) return;
+
+          const referenceSpace = this.refSpace;
+          const hitTestResults = frame.getHitTestResults(this.hitTestSource);
+
+          if (hitTestResults.length > 0) {
+            const hit = hitTestResults[0];
+            const pose = hit.getPose(referenceSpace);
+            if (!pose) return;
+
+            const position = pose.transform.position;
+            const orientation = pose.transform.orientation;
+
+            this.reticle.object3D.position.set(
+              position.x,
+              position.y,
+              position.z
+            );
+            this.reticle.object3D.quaternion.set(
+              orientation.x,
+              orientation.y,
+              orientation.z,
+              orientation.w
+            );
+
+            this.reticle.setAttribute("visible", "true");
+          } else {
+            this.reticle.setAttribute("visible", "false");
+          }
+        },
+
+        onSelect: function () {
+          if (!this.reticle.getAttribute("visible")) return;
+
+          const reticleObj = this.reticle.object3D;
+          const modelObj = this.model.object3D;
+
+          modelObj.position.copy(reticleObj.position);
+          modelObj.quaternion.copy(reticleObj.quaternion);
+
+          this.model.setAttribute("visible", "true");
+        },
+      });
+
+      // Attach hit-test behavior to the scene
+      document.querySelector("a-scene").setAttribute("ar-hit-test", "");
+    </script>
   </body>
 </html>
