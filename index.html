@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-
-<head>
+  <head>
     <meta charset="utf-8" />
     <title>Yukon Garden AR – Tap to Place</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -10,319 +9,194 @@
     <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
 
     <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background: #000;
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        }
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #000;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
 
-        #enter-ar-hint {
-            position: absolute;
-            left: 50%;
-            bottom: 16px;
-            transform: translateX(-50%);
-            padding: 8px 16px;
-            border-radius: 999px;
-            background: rgba(0, 0, 0, 0.65);
-            color: #fff;
-            font-size: 14px;
-            z-index: 10;
-            pointer-events: none;
-            text-align: center;
-        }
+      #scale-controls {
+        position: absolute;
+        left: 50%;
+        bottom: 64px;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.7);
+        color: #fff;
+        font-size: 14px;
+        z-index: 11;
+      }
 
-        #scale-controls {
-            position: absolute;
-            left: 50%;
-            bottom: 64px;
-            transform: translateX(-50%);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 10px;
-            border-radius: 999px;
-            background: rgba(0, 0, 0, 0.7);
-            color: #fff;
-            font-size: 14px;
-            z-index: 11;
-        }
+      #scale-controls button {
+        border: none;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 16px;
+        background: #00c28a;
+        color: #000;
+        cursor: pointer;
+      }
 
-        #scale-controls button {
-            border: none;
-            border-radius: 999px;
-            padding: 4px 10px;
-            font-size: 16px;
-            background: #00c28a;
-            color: #000;
-            cursor: pointer;
-        }
-
-        #scale-controls button:active {
-            transform: scale(0.95);
-        }
+      #scale-controls button:active {
+        transform: scale(0.95);
+      }
     </style>
-</head>
+  </head>
 
-<body>
-    <!-- <div id="enter-ar-hint">
-        Tap the AR button. If you see a ring, move your device to find a surface, then tap to place.
-    </div> -->
+  <body>
     <div id="scale-controls">
-        <button id="scale-down">–</button>
-        <span>Resize garden</span>
-        <button id="scale-up">+</button>
+      <button id="scale-down">–</button>
+      <span>Resize garden</span>
+      <button id="scale-up">+</button>
     </div>
 
+    <a-scene
+      embedded
+      renderer="colorManagement: true; physicallyCorrectLights: true"
+      webxr="optionalFeatures: dom-overlay; overlayElement: body"
+      xr-mode-ui="enabled: true; XRMode: ar"
+      vr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: true"
+      devinci-hit-place
+    >
+      <!-- Camera -->
+      <a-entity id="cameraRig">
+        <a-entity
+          id="camera"
+          camera
+          position="0 1.6 3"
+          wasd-controls-enabled="false"
+          look-controls="pointerLockEnabled: false; touchEnabled: true"
+        ></a-entity>
+      </a-entity>
 
-    <a-scene embedded renderer="colorManagement: true; physicallyCorrectLights: true"
-        webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: body" xr-mode-ui="enabled: true; XRMode: ar"
-        vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: true" devinci-hit-test>
-        <!-- Camera -->
-        <a-entity id="cameraRig">
-            <a-entity id="camera" camera position="0 1.6 3" wasd-controls-enabled="false"
-                look-controls="pointerLockEnabled: false; touchEnabled: true"></a-entity>
-        </a-entity>
+      <!-- Assets -->
+      <a-assets>
+        <!-- Make sure this path is correct -->
+        <a-asset-item id="garden" src="assets/DC_intersection.glb"></a-asset-item>
+      </a-assets>
 
-        <!-- Assets -->
-        <a-assets>
-            <!-- Update this path if needed -->
-            <a-asset-item id="garden" src="assets/DC_intersection.glb"></a-asset-item>
-        </a-assets>
+      <!-- Lights -->
+      <a-entity light="type: ambient; intensity: 0.6"></a-entity>
+      <a-entity light="type: directional; intensity: 0.8" position="0 4 4"></a-entity>
 
-        <!-- Lights -->
-        <a-entity light="type: ambient; intensity: 0.6"></a-entity>
-        <a-entity light="type: directional; intensity: 0.8" position="0 4 4"></a-entity>
-
-        <!-- Reticle (for hit-test) -->
-        <a-entity id="reticle" geometry="primitive: ring; radiusInner: 0.15; radiusOuter: 0.2"
-            material="color: #00ff99; shader: flat; opacity: 0.9" rotation="-90 0 0" visible="false"></a-entity>
-
-        <!-- Model: hidden at first; will be shown when placed / fallback triggers -->
-        <a-entity id="garden-model" gltf-model="#garden" visible="false" scale="0.4 0.4 0.4"></a-entity>
+      <!-- Model: hidden at first; will be shown when placed -->
+      <a-entity
+        id="garden-model"
+        gltf-model="#garden"
+        visible="false"
+        scale="0.4 0.4 0.4"
+      ></a-entity>
     </a-scene>
 
     <script>
-        // devinci-hit-test: tap-to-place with graceful fallback
-  AFRAME.registerComponent("devinci-hit-test", {
-    init: function () {
-      const sceneEl = this.el; // a-scene
-      this.xrSession = null;
-      this.viewerSpace = null;
-      this.refSpace = null;
-      this.hitTestSource = null;
-      this.useHitTest = false;
-      this.hasPlaced = false;
+      // Simple tap-to-place: put model 2m in front of camera on first tap in AR.
+      AFRAME.registerComponent("devinci-hit-place", {
+        init: function () {
+          const sceneEl = this.el; // a-scene
+          this.xrSession = null;
+          this.hasPlaced = false;
 
-      this.reticle = document.querySelector("#reticle");
-      this.model = document.querySelector("#garden-model");
-      this.hintEl = document.getElementById("enter-ar-hint");
+          this.model = document.querySelector("#garden-model");
+          this.cameraEl = document.querySelector("#camera");
 
-      this._onSelect = this.onSelect.bind(this);
+          this._onSelect = this.onSelect.bind(this);
 
-      sceneEl.addEventListener("enter-vr", () => {
-        // In A-Frame, AR also fires enter-vr
-        if (sceneEl.is("ar-mode")) {
-          this.startAR();
-        }
-      });
+          sceneEl.addEventListener("enter-vr", () => {
+            if (sceneEl.is("ar-mode")) {
+              this.startAR();
+            }
+          });
 
-      sceneEl.addEventListener("exit-vr", () => {
-        this.stopAR();
-      });
-    },
+          sceneEl.addEventListener("exit-vr", () => {
+            this.stopAR();
+          });
+        },
 
-    startAR: async function () {
-      const renderer = this.el.renderer;
-      if (!renderer || !renderer.xr) {
-        console.warn("No WebXR renderer available");
-        return;
-      }
+        startAR: function () {
+          const renderer = this.el.renderer;
+          if (!renderer || !renderer.xr) {
+            console.warn("No WebXR renderer available");
+            return;
+          }
 
-      const session = renderer.xr.getSession();
-      if (!session) {
-        console.warn("No XR session");
-        return;
-      }
+          const session = renderer.xr.getSession();
+          if (!session) {
+            console.warn("No XR session");
+            return;
+          }
 
-      this.xrSession = session;
+          this.xrSession = session;
+          this.hasPlaced = false;
 
-      try {
-        const viewerSpace = await session
-          .requestReferenceSpace("viewer")
-          .catch(() => null);
-        if (!viewerSpace) {
-          throw new Error("viewer reference space not supported");
-        }
+          session.addEventListener("select", this._onSelect);
+        },
 
-        this.viewerSpace = viewerSpace;
-        this.refSpace = await session.requestReferenceSpace("local");
+        stopAR: function () {
+          if (!this.xrSession) return;
+          this.xrSession.removeEventListener("select", this._onSelect);
+          this.xrSession = null;
+          this.hasPlaced = false;
+        },
 
-        this.hitTestSource = await session.requestHitTestSource({
-          space: this.viewerSpace,
-        });
+        onSelect: function () {
+          if (this.hasPlaced) return; // only place once
+          if (!this.cameraEl || !this.model) return;
 
-        this.useHitTest = true;
-        console.log("Hit-test enabled");
-
-        if (this.hintEl) {
-          this.hintEl.textContent =
-            "Move your device to find a surface. When you see the ring, tap once to place.";
-        }
-      } catch (e) {
-        console.warn("Hit-test not available, using simple placement fallback:", e);
-        this.useHitTest = false;
-
-        // Fallback: drop the garden ~2m in front of the camera
-        const cam = document.querySelector("#camera");
-        if (cam) {
-          const camObj = cam.object3D;
+          const camObj = this.cameraEl.object3D;
           const modelObj = this.model.object3D;
 
-          modelObj.position.set(0, 0, -2);
-          camObj.localToWorld(modelObj.position);
+          // Get camera world position and forward direction
+          const pos = new THREE.Vector3();
+          const dir = new THREE.Vector3();
+
+          camObj.getWorldPosition(pos);
+          camObj.getWorldDirection(dir);
+
+          // Place model 2m in front of camera
+          dir.multiplyScalar(2.0);
+          pos.add(dir);
+
+          modelObj.position.copy(pos);
 
           this.model.setAttribute("visible", true);
           this.hasPlaced = true;
+        },
+      });
+
+      // Resize controls
+      (function () {
+        const model = document.querySelector("#garden-model");
+        const btnUp = document.getElementById("scale-up");
+        const btnDown = document.getElementById("scale-down");
+        if (!model || !btnUp || !btnDown) return;
+
+        let currentScale = model.object3D.scale.x || 0.4; // assume uniform
+        const min = 0.05;
+        const max = 10.0;
+        const step = 0.1;
+
+        function applyScale(newScale) {
+          newScale = Math.max(min, Math.min(max, newScale));
+          model.object3D.scale.set(newScale, newScale, newScale);
+          currentScale = newScale;
         }
 
-        if (this.hintEl) {
-          this.hintEl.textContent =
-            "AR running (no plane detection on this device). Garden placed in front of you.";
-        }
-      }
+        btnUp.addEventListener("click", (e) => {
+          e.stopPropagation(); // don't trigger XR select
+          applyScale(currentScale + step);
+        });
 
-      // Listen for taps (single placement)
-      session.addEventListener("select", this._onSelect);
-
-      // Hook our frame handler into WebXR
-      renderer.setAnimationLoop(this.onXRFrame.bind(this));
-    },
-
-    stopAR: function () {
-      if (!this.xrSession) return;
-      this.xrSession.removeEventListener("select", this._onSelect);
-      this.xrSession = null;
-      this.hitTestSource = null;
-      this.viewerSpace = null;
-      this.refSpace = null;
-      this.reticle.setAttribute("visible", false);
-      this.hasPlaced = false;
-    },
-
-    onXRFrame: function (time, frame) {
-      if (!this.useHitTest) return;
-
-      const session = this.xrSession;
-      if (!session || !this.hitTestSource) return;
-
-      const referenceSpace = this.refSpace;
-      const hitTestResults = frame.getHitTestResults(this.hitTestSource);
-
-      if (hitTestResults.length > 0) {
-        const hit = hitTestResults[0];
-        const pose = hit.getPose(referenceSpace);
-        if (!pose) return;
-
-        const position = pose.transform.position;
-        const orientation = pose.transform.orientation;
-
-        this.reticle.object3D.position.set(
-          position.x,
-          position.y,
-          position.z
-        );
-        this.reticle.object3D.quaternion.set(
-          orientation.x,
-          orientation.y,
-          orientation.z,
-          orientation.w
-        );
-
-        this.reticle.setAttribute("visible", true);
-      } else {
-        this.reticle.setAttribute("visible", false);
-      }
-    },
-
-    onSelect: function () {
-      // If no hit-test, we already placed via fallback
-      if (!this.useHitTest) return;
-      if (this.hasPlaced) return; // only place once
-
-      if (!this.reticle.getAttribute("visible")) return;
-
-      const reticleObj = this.reticle.object3D;
-      const modelObj = this.model.object3D;
-
-      modelObj.position.copy(reticleObj.position);
-      modelObj.quaternion.copy(reticleObj.quaternion);
-
-      this.model.setAttribute("visible", true);
-      this.hasPlaced = true;
-    },
-  });
-
-  // Resize controls (unchanged)
-  (function () {
-    const model = document.querySelector("#garden-model");
-    const btnUp = document.getElementById("scale-up");
-    const btnDown = document.getElementById("scale-down");
-    if (!model || !btnUp || !btnDown) return;
-
-    let currentScale = model.object3D.scale.x || 0.4; // assume uniform
-    const min = 0.05;
-    const max = 10.0;
-    const step = 0.1;
-
-    function applyScale(newScale) {
-      newScale = Math.max(min, Math.min(max, newScale));
-      model.object3D.scale.set(newScale, newScale, newScale);
-      currentScale = newScale;
-    }
-
-    btnUp.addEventListener("click", (e) => {
-      e.stopPropagation(); // don't trigger XR select
-      applyScale(currentScale + step);
-    });
-
-    btnDown.addEventListener("click", (e) => {
-      e.stopPropagation();
-      applyScale(currentScale - step);
-    });
-  })();
-
-        (function () {
-            const model = document.querySelector("#garden-model");
-            const btnUp = document.getElementById("scale-up");
-            const btnDown = document.getElementById("scale-down");
-            if (!model || !btnUp || !btnDown) return;
-
-            let currentScale = model.object3D.scale.x || 0.4; // assume uniform
-            const min = 0.05;
-            const max = 10.0;
-            const step = 0.1;
-
-            function applyScale(newScale) {
-                newScale = Math.max(min, Math.min(max, newScale));
-                model.object3D.scale.set(newScale, newScale, newScale);
-                currentScale = newScale;
-            }
-
-            btnUp.addEventListener("click", (e) => {
-                e.stopPropagation(); // don't trigger XR select
-                applyScale(currentScale + step);
-            });
-
-            btnDown.addEventListener("click", (e) => {
-                e.stopPropagation();
-                applyScale(currentScale - step);
-            });
-        })();
-
-
-       
+        btnDown.addEventListener("click", (e) => {
+          e.stopPropagation();
+          applyScale(currentScale - step);
+        });
+      })();
     </script>
-</body>
-
+  </body>
 </html>
