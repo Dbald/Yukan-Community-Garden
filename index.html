@@ -5,11 +5,8 @@
     <title>A-Frame AR Model Template</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <!-- A-Frame (latest CDN at time of writing) -->
+    <!-- A-Frame -->
     <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
-
-    <!-- Optional: controller cursor + extras if you want them later -->
-    <!-- <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@v6.1.1/dist/aframe-extras.min.js"></script> -->
 
     <style>
       body {
@@ -31,42 +28,17 @@
         z-index: 10;
         pointer-events: none;
       }
-      #unsupported-msg {
-        position: absolute;
-        left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
-        padding: 12px 16px;
-        border-radius: 8px;
-        background: #111;
-        color: #fff;
-        font-size: 14px;
-        max-width: 90vw;
-        text-align: center;
-        display: none;
-        z-index: 10;
-      }
     </style>
   </head>
 
   <body>
-    <div id="enter-ar-hint">Tap the AR icon to enter AR</div>
-    <div id="unsupported-msg">
-      WebXR immersive AR is not supported on this device / browser.<br />
-      Try Chrome on Android or Safari on a recent iOS device.
-    </div>
+    <div id="enter-ar-hint">Tap the AR button, then tap to place the model</div>
 
-    <!--
-      SCENE CONFIG
-      - embedded: keeps canvas sized to window
-      - xr-mode-ui: show AR button, hide VR
-      - webxr: enable hit-test + dom-overlay (so UI can appear on top if needed)
-
-    -->
     <a-scene
       embedded
       renderer="colorManagement: true; physicallyCorrectLights: true"
       webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: body"
+      xr-mode-ui="XRMode: ar; enterAREnabled: true; enterVREnabled: false"
       vr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: true"
     >
@@ -83,24 +55,21 @@
 
       <!-- Assets -->
       <a-assets>
-        <!-- Replace with your own 3D model -->
+        <!-- Adjust this path to your GLB location -->
         <a-asset-item
           id="garden"
-          src="/assets/DC_intersection.glb"
+          src="assets/DC_intersection.glb"
         ></a-asset-item>
-        </a-assets>
-      <!-- Simple lighting for the model -->
+      </a-assets>
+
+      <!-- Lighting -->
       <a-entity light="type: ambient; intensity: 0.6"></a-entity>
       <a-entity
         light="type: directional; intensity: 0.8"
         position="0 4 4"
       ></a-entity>
 
-      <!--
-        Reticle for hit-testing.
-        This will appear where a surface is detected,
-        and the model will snap there when you tap.
-      -->
+      <!-- Reticle (hit-test target) -->
       <a-entity
         id="reticle"
         geometry="primitive: ring; radiusInner: 0.15; radiusOuter: 0.2"
@@ -109,7 +78,7 @@
         visible="false"
       ></a-entity>
 
-      <!-- Your 3D model – initially hidden until placed -->
+      <!-- Model (hidden until placed in AR) -->
       <a-entity
         id="ar-model"
         gltf-model="#garden"
@@ -119,10 +88,10 @@
     </a-scene>
 
     <script>
-      // Basic AR hit-test + tap-to-place logic
+      // Hit-test + tap-to-place component
       AFRAME.registerComponent("ar-hit-test", {
         init: function () {
-          const sceneEl = this.el.sceneEl;
+          const sceneEl = this.el; // a-scene
           this.xrSession = null;
           this.viewerSpace = null;
           this.refSpace = null;
@@ -132,6 +101,7 @@
           this._onSelect = this.onSelect.bind(this);
 
           sceneEl.addEventListener("enter-vr", () => {
+            // In A-Frame, AR also emits enter-vr when XR starts
             if (sceneEl.is("ar-mode")) {
               this.startAR();
             }
@@ -144,38 +114,44 @@
 
         startAR: async function () {
           const renderer = this.el.renderer;
-          if (!renderer.xr) return;
+          if (!renderer || !renderer.xr) {
+            console.warn("No WebXR renderer available");
+            return;
+          }
 
           const session = renderer.xr.getSession();
-          if (!session) return;
+          if (!session) {
+            console.warn("No XR session");
+            return;
+          }
 
           this.xrSession = session;
 
-          // Feature check for hit-test
-          const supported = await session.requestReferenceSpace("viewer").catch(
-            () => null
-          );
-          if (!supported) {
+          // Viewer reference space
+          const viewerSpace = await session
+            .requestReferenceSpace("viewer")
+            .catch(() => null);
+          if (!viewerSpace) {
             console.warn("Viewer reference space not supported.");
             return;
           }
 
-          this.viewerSpace = supported;
+          this.viewerSpace = viewerSpace;
           this.refSpace = await session.requestReferenceSpace("local");
 
-          // Request hit-test source
-          const hitTestSource = await session.requestHitTestSource({
+          // Hit-test source
+          this.hitTestSource = await session.requestHitTestSource({
             space: this.viewerSpace,
           });
-          this.hitTestSource = hitTestSource;
 
-          // Listen for screen taps
+          // Tap listener
           session.addEventListener("select", this._onSelect);
 
-          // Show hint
-          document.getElementById("enter-ar-hint").style.display = "none";
+          // Hide hint once AR is active
+          const hint = document.getElementById("enter-ar-hint");
+          if (hint) hint.style.display = "none";
 
-          // Hook into A-Frame render loop
+          // Use XR frame loop
           renderer.setAnimationLoop(this.onXRFrame.bind(this));
         },
 
@@ -194,19 +170,16 @@
           if (!session || !this.hitTestSource) return;
 
           const referenceSpace = this.refSpace;
-          const viewerSpace = this.viewerSpace;
           const hitTestResults = frame.getHitTestResults(this.hitTestSource);
 
           if (hitTestResults.length > 0) {
             const hit = hitTestResults[0];
             const pose = hit.getPose(referenceSpace);
-
             if (!pose) return;
 
             const position = pose.transform.position;
             const orientation = pose.transform.orientation;
 
-            // Update reticle transform
             this.reticle.object3D.position.set(
               position.x,
               position.y,
@@ -228,7 +201,6 @@
         onSelect: function () {
           if (!this.reticle.getAttribute("visible")) return;
 
-          // Place model at reticle’s pose
           const reticleObj = this.reticle.object3D;
           const modelObj = this.model.object3D;
 
@@ -239,26 +211,8 @@
         },
       });
 
-      // Attach component to the scene
+      // Attach hit-test behavior to the scene
       document.querySelector("a-scene").setAttribute("ar-hit-test", "");
-    </script>
-
-    <script>
-      // Simple WebXR AR support check
-      if (navigator.xr) {
-        navigator.xr
-          .isSessionSupported("immersive-ar")
-          .then((supported) => {
-            if (!supported) {
-              document.getElementById("unsupported-msg").style.display = "block";
-            }
-          })
-          .catch(() => {
-            document.getElementById("unsupported-msg").style.display = "block";
-          });
-      } else {
-        document.getElementById("unsupported-msg").style.display = "block";
-      }
     </script>
   </body>
 </html>
