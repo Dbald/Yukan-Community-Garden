@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>A-Frame AR Model Template</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- A-Frame (latest CDN at time of writing) -->
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+
+    <!-- Optional: controller cursor + extras if you want them later -->
+    <!-- <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@v6.1.1/dist/aframe-extras.min.js"></script> -->
+
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #000;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      #enter-ar-hint {
+        position: absolute;
+        left: 50%;
+        bottom: 16px;
+        transform: translateX(-50%);
+        padding: 8px 16px;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.65);
+        color: #fff;
+        font-size: 14px;
+        z-index: 10;
+        pointer-events: none;
+      }
+      #unsupported-msg {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        padding: 12px 16px;
+        border-radius: 8px;
+        background: #111;
+        color: #fff;
+        font-size: 14px;
+        max-width: 90vw;
+        text-align: center;
+        display: none;
+        z-index: 10;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="enter-ar-hint">Tap the AR icon to enter AR</div>
+    <div id="unsupported-msg">
+      WebXR immersive AR is not supported on this device / browser.<br />
+      Try Chrome on Android or Safari on a recent iOS device.
+    </div>
+
+    <!--
+      SCENE CONFIG
+      - embedded: keeps canvas sized to window
+      - xr-mode-ui: show AR button, hide VR
+      - webxr: enable hit-test + dom-overlay (so UI can appear on top if needed)
+    -->
+    <a-scene
+      embedded
+      renderer="colorManagement: true; physicallyCorrectLights: true"
+      xr-mode-ui="enabled: true; enterARButton: true; enterVRButton: false"
+      webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: body"
+      vr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: true"
+    >
+      <!-- Camera -->
+      <a-entity id="cameraRig">
+        <a-entity
+          id="camera"
+          camera
+          position="0 1.6 0"
+          wasd-controls-enabled="false"
+          look-controls="pointerLockEnabled: false; touchEnabled: true"
+        ></a-entity>
+      </a-entity>
+
+      <!-- Simple lighting for the model -->
+      <a-entity light="type: ambient; intensity: 0.6"></a-entity>
+      <a-entity
+        light="type: directional; intensity: 0.8"
+        position="0 4 4"
+      ></a-entity>
+
+      <!--
+        Reticle for hit-testing.
+        This will appear where a surface is detected,
+        and the model will snap there when you tap.
+      -->
+      <a-entity
+        id="reticle"
+        geometry="primitive: ring; radiusInner: 0.15; radiusOuter: 0.2"
+        material="color: #00ff99; shader: flat; opacity: 0.9"
+        rotation="-90 0 0"
+        visible="false"
+      ></a-entity>
+
+      <!-- Your 3D model – initially hidden until placed -->
+      <a-entity
+        id="ar-model"
+        gltf-model="url(models/your-model.glb)"
+        visible="false"
+        scale="0.4 0.4 0.4"
+      ></a-entity>
+    </a-scene>
+
+    <script>
+      // Basic AR hit-test + tap-to-place logic
+      AFRAME.registerComponent("ar-hit-test", {
+        init: function () {
+          const sceneEl = this.el.sceneEl;
+          this.xrSession = null;
+          this.viewerSpace = null;
+          this.refSpace = null;
+          this.hitTestSource = null;
+          this.reticle = document.querySelector("#reticle");
+          this.model = document.querySelector("#ar-model");
+          this._onSelect = this.onSelect.bind(this);
+
+          sceneEl.addEventListener("enter-vr", () => {
+            if (sceneEl.is("ar-mode")) {
+              this.startAR();
+            }
+          });
+
+          sceneEl.addEventListener("exit-vr", () => {
+            this.stopAR();
+          });
+        },
+
+        startAR: async function () {
+          const renderer = this.el.renderer;
+          if (!renderer.xr) return;
+
+          const session = renderer.xr.getSession();
+          if (!session) return;
+
+          this.xrSession = session;
+
+          // Feature check for hit-test
+          const supported = await session.requestReferenceSpace("viewer").catch(
+            () => null
+          );
+          if (!supported) {
+            console.warn("Viewer reference space not supported.");
+            return;
+          }
+
+          this.viewerSpace = supported;
+          this.refSpace = await session.requestReferenceSpace("local");
+
+          // Request hit-test source
+          const hitTestSource = await session.requestHitTestSource({
+            space: this.viewerSpace,
+          });
+          this.hitTestSource = hitTestSource;
+
+          // Listen for screen taps
+          session.addEventListener("select", this._onSelect);
+
+          // Show hint
+          document.getElementById("enter-ar-hint").style.display = "none";
+
+          // Hook into A-Frame render loop
+          renderer.setAnimationLoop(this.onXRFrame.bind(this));
+        },
+
+        stopAR: function () {
+          if (!this.xrSession) return;
+          this.xrSession.removeEventListener("select", this._onSelect);
+          this.xrSession = null;
+          this.hitTestSource = null;
+          this.viewerSpace = null;
+          this.refSpace = null;
+          this.reticle.setAttribute("visible", "false");
+        },
+
+        onXRFrame: function (time, frame) {
+          const session = this.xrSession;
+          if (!session || !this.hitTestSource) return;
+
+          const referenceSpace = this.refSpace;
+          const viewerSpace = this.viewerSpace;
+          const hitTestResults = frame.getHitTestResults(this.hitTestSource);
+
+          if (hitTestResults.length > 0) {
+            const hit = hitTestResults[0];
+            const pose = hit.getPose(referenceSpace);
+
+            if (!pose) return;
+
+            const position = pose.transform.position;
+            const orientation = pose.transform.orientation;
+
+            // Update reticle transform
+            this.reticle.object3D.position.set(
+              position.x,
+              position.y,
+              position.z
+            );
+            this.reticle.object3D.quaternion.set(
+              orientation.x,
+              orientation.y,
+              orientation.z,
+              orientation.w
+            );
+
+            this.reticle.setAttribute("visible", "true");
+          } else {
+            this.reticle.setAttribute("visible", "false");
+          }
+        },
+
+        onSelect: function () {
+          if (!this.reticle.getAttribute("visible")) return;
+
+          // Place model at reticle’s pose
+          const reticleObj = this.reticle.object3D;
+          const modelObj = this.model.object3D;
+
+          modelObj.position.copy(reticleObj.position);
+          modelObj.quaternion.copy(reticleObj.quaternion);
+
+          this.model.setAttribute("visible", "true");
+        },
+      });
+
+      // Attach component to the scene
+      document.querySelector("a-scene").setAttribute("ar-hit-test", "");
+    </script>
+
+    <script>
+      // Simple WebXR AR support check
+      if (navigator.xr) {
+        navigator.xr
+          .isSessionSupported("immersive-ar")
+          .then((supported) => {
+            if (!supported) {
+              document.getElementById("unsupported-msg").style.display = "block";
+            }
+          })
+          .catch(() => {
+            document.getElementById("unsupported-msg").style.display = "block";
+          });
+      } else {
+        document.getElementById("unsupported-msg").style.display = "block";
+      }
+    </script>
+  </body>
+</html>
