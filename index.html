@@ -2,204 +2,61 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Yukon Garden AR – Tap to Place</title>
+    <title>Yukon Garden AR – View in AR</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <!-- A-Frame -->
-    <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
+    <!-- model-viewer web component -->
+    <script type="module"
+      src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js">
+    </script>
 
     <style>
       body {
         margin: 0;
-        overflow: hidden;
         background: #000;
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
 
-      #scale-controls {
-    position: absolute;
-    left: 50%;
-    bottom: 64px;
-    transform: translateX(-50%);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 18px;
-    border-radius: 999px;
-    background: rgba(0, 0, 0, 0.75);
-    color: #fff;
-    font-size: 18px;
-    z-index: 11;
-}
+      model-viewer {
+        width: 100vw;
+        height: 100vh;
+        background: #000;
+      }
 
-#scale-controls button {
-    border: none;
-    border-radius: 999px;
-    padding: 14px 20px; /* BIGGER HIT AREA */
-    font-size: 28px;
-    background: #00e9a5;
-    color: #000;
-    cursor: pointer;
-    font-weight: bold;
-}
-
-#scale-controls button:active {
-    transform: scale(0.92);
-}
-
+      /* Optional: small overlay text */
+      .hint {
+        position: absolute;
+        left: 50%;
+        bottom: 16px;
+        transform: translateX(-50%);
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.7);
+        color: #fff;
+        font-size: 14px;
+        z-index: 10;
+      }
     </style>
   </head>
 
   <body>
-    <div id="scale-controls">
-      <button id="scale-down">–</button>
-      <span>Resize garden</span>
-      <button id="scale-up">+</button>
-    </div>
-
-    <a-scene
-      embedded
-      renderer="colorManagement: true; physicallyCorrectLights: true"
-      webxr="optionalFeatures: dom-overlay; overlayElement: body"
-      xr-mode-ui="enabled: true; XRMode: ar"
-      vr-mode-ui="enabled: false"
-      device-orientation-permission-ui="enabled: true"
-      devinci-hit-place
+    <model-viewer
+      id="yukon-viewer"
+      src="assets/final_map_1-v1.glb"
+      alt="Yukon Community Garden"
+      ar
+      ar-modes="scene-viewer quick-look webxr"
+      camera-controls
+      auto-rotate
+      autoplay
+      touch-action="pan-y"
+      exposure="1"
+      shadow-intensity="0.6"
     >
-      <!-- Camera -->
-      <a-entity id="cameraRig">
-        <a-entity
-          id="camera"
-          camera
-          position="0 1.6 3"
-          wasd-controls-enabled="false"
-          look-controls="pointerLockEnabled: false; touchEnabled: true"
-        ></a-entity>
-      </a-entity>
+    </model-viewer>
 
-      <!-- Assets -->
-      <a-assets>
-        <!-- Make sure this path is correct -->
-        <a-asset-item id="garden" src="assets/final_map_1.glb"></a-asset-item>
-      </a-assets>
-
-      <!-- Lights -->
-      <a-entity light="type: ambient; intensity: 0.6"></a-entity>
-      <a-entity light="type: directional; intensity: 0.8" position="0 4 4"></a-entity>
-
-      <!-- Model: hidden at first; will be shown when placed -->
-      <a-entity
-        id="garden-model"
-        gltf-model="#garden"
-        visible="false"
-        position="0 -2 0"
-        scale="0.2 0.2 0.2"
-      ></a-entity>
-    </a-scene>
-
-    <script>
-      // Simple tap-to-place: put model 2m in front of camera on first tap in AR.
-      AFRAME.registerComponent("devinci-hit-place", {
-        init: function () {
-          const sceneEl = this.el; // a-scene
-          this.xrSession = null;
-          this.hasPlaced = false;
-
-          this.model = document.querySelector("#garden-model");
-          this.cameraEl = document.querySelector("#camera");
-
-          this._onSelect = this.onSelect.bind(this);
-
-          sceneEl.addEventListener("enter-vr", () => {
-            if (sceneEl.is("ar-mode")) {
-              this.startAR();
-            }
-          });
-
-          sceneEl.addEventListener("exit-vr", () => {
-            this.stopAR();
-          });
-        },
-
-        startAR: function () {
-          const renderer = this.el.renderer;
-          if (!renderer || !renderer.xr) {
-            console.warn("No WebXR renderer available");
-            return;
-          }
-
-          const session = renderer.xr.getSession();
-          if (!session) {
-            console.warn("No XR session");
-            return;
-          }
-
-          this.xrSession = session;
-          this.hasPlaced = false;
-
-          session.addEventListener("select", this._onSelect);
-        },
-
-        stopAR: function () {
-          if (!this.xrSession) return;
-          this.xrSession.removeEventListener("select", this._onSelect);
-          this.xrSession = null;
-          this.hasPlaced = false;
-        },
-
-        onSelect: function () {
-          if (this.hasPlaced) return; // only place once
-          if (!this.cameraEl || !this.model) return;
-
-          const camObj = this.cameraEl.object3D;
-          const modelObj = this.model.object3D;
-
-          // Get camera world position and forward direction
-          const pos = new THREE.Vector3();
-          const dir = new THREE.Vector3();
-
-          camObj.getWorldPosition(pos);
-          camObj.getWorldDirection(dir);
-
-          // Place model 2m in front of camera
-          dir.multiplyScalar(2.0);
-          pos.add(dir);
-
-          modelObj.position.copy(pos);
-
-          this.model.setAttribute("visible", true);
-          this.hasPlaced = true;
-        },
-      });
-
-      // Resize controls
-      (function () {
-    const model = document.querySelector("#garden-model");
-    const btnUp = document.getElementById("scale-up");
-    const btnDown = document.getElementById("scale-down");
-    if (!model || !btnUp || !btnDown) return;
-
-    let currentScale = model.object3D.scale.x || 0.4;
-    const min = 0.05;
-    const max = 50.0;    // <-- increased max in case garden is huge
-    const step = 1.0;    // <-- MUCH FASTER resizing
-
-    function applyScale(newScale) {
-        newScale = Math.max(min, Math.min(max, newScale));
-        model.object3D.scale.set(newScale, newScale, newScale);
-        currentScale = newScale;
-    }
-
-    btnUp.addEventListener("click", (e) => {
-        e.stopPropagation();
-        applyScale(currentScale + step);
-    });
-
-    btnDown.addEventListener("click", (e) => {
-        e.stopPropagation();
-        applyScale(currentScale - step);
-    });
-})();
-    </script>
+    <div class="hint">
+      Tap the AR icon to place the garden. Pinch to scale and rotate in AR.
+    </div>
   </body>
 </html>
