@@ -1,256 +1,603 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Web 3D Viewer</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <!-- model-viewer web component -->
-    <script type="module"
-      src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js">
-    </script>
+<head>
+  <meta charset="utf-8" />
+  <title>Yukon Community Garden — Reclamation Prototype</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <style>
-      :root {
-        color-scheme: dark;
-      }
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
 
-      body {
-        margin: 0;
-        background: #050608;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        color: #fff;
-        overflow: hidden;
-      }
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #050608;
+      --panel: rgba(0, 0, 0, 0.78);
+      --stroke: rgba(255, 255, 255, 0.12);
+      --text: rgba(255, 255, 255, 0.92);
+      --muted: rgba(255, 255, 255, 0.68);
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+      --blur: blur(10px);
+      --radius: 14px;
+      --radius2: 10px;
+    }
 
-      model-viewer {
-        width: 100vw;
-        height: 100vh;
-        background: radial-gradient(circle at top, #30333b 0%, #050608 55%, #000 100%);
-      }
+    * {
+      box-sizing: border-box;
+    }
 
-      /* Top icon bar */
-      .top-actions {
-        position: absolute;
-        top: 10px;
-        left: 50%;
-        transform: translateX(-50%);
-        display: flex;
-        gap: 10px;
-        z-index: 20;
-      }
+    body {
+      margin: 0;
+      background: var(--bg);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #fff;
+      overflow: hidden;
+    }
 
+    model-viewer {
+      width: 100vw;
+      height: 100vh;
+      background: radial-gradient(circle at top, #30333b 0%, #050608 55%, #000 100%);
+    }
+
+    .top-actions {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+      z-index: 30;
+    }
+
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      border: 1px solid var(--stroke);
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #f5f5f5;
+      font-size: 18px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(6px);
+    }
+
+    .icon-btn:hover {
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .icon-btn:active {
+      transform: scale(0.95);
+    }
+
+    #file-input {
+      display: none;
+    }
+
+    .file-pill {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.7);
+      border: 1px solid var(--stroke);
+      font-size: 11px;
+      max-width: 55vw;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      overflow: hidden;
+      z-index: 30;
+    }
+
+    .bottom-left-hint {
+      position: absolute;
+      left: 16px;
+      bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      opacity: 0.85;
+      z-index: 30;
+    }
+
+    .bottom-left-icon {
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+    }
+
+    .bottom-center-device {
+      position: absolute;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      opacity: 0.85;
+      z-index: 30;
+    }
+
+    .device-icon {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+    }
+
+    .drawer-toggle {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 40;
+    }
+
+    .drawer {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: min(440px, calc(100vw - 20px));
+      max-height: calc(100vh - 20px);
+      overflow: hidden;
+      border-radius: var(--radius);
+      background: var(--panel);
+      border: 1px solid var(--stroke);
+      box-shadow: var(--shadow);
+      backdrop-filter: var(--blur);
+      z-index: 35;
+      transform: translateY(-6px);
+      opacity: 0;
+      pointer-events: none;
+      transition: 220ms ease;
+    }
+
+    .drawer.open {
+      transform: translateY(0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .drawer-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 14px 14px 10px 14px;
+      border-bottom: 1px solid var(--stroke);
+    }
+
+    .drawer-title h2 {
+      margin: 0;
+      font-size: 14px;
+      letter-spacing: 0.4px;
+    }
+
+    .drawer-title p {
+      margin: 6px 0 0 0;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .close-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      border: 1px solid var(--stroke);
+      background: rgba(0, 0, 0, 0.55);
+      color: #fff;
+      cursor: pointer;
+    }
+
+    .drawer-body {
+      padding: 12px 14px 14px 14px;
+      overflow: auto;
+      max-height: calc(100vh - 80px);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--stroke);
+      font-size: 11px;
+      color: var(--muted);
+      margin: 0 8px 8px 0;
+    }
+
+    .section {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: var(--radius2);
+      border: 1px solid var(--stroke);
+      background: rgba(0, 0, 0, 0.35);
+    }
+
+    .section h3 {
+      margin: 0 0 8px 0;
+      font-size: 12px;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.86);
+    }
+
+    .section p,
+    .section li {
+      font-size: 12px;
+      color: var(--text);
+      line-height: 1.45;
+    }
+
+    .section ul {
+      margin: 8px 0 0 18px;
+      padding: 0;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 10px;
+    }
+
+    .step {
+      padding: 10px;
+      border-radius: 12px;
+      border: 1px solid var(--stroke);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .step-top {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .step-top strong {
+      font-size: 12px;
+    }
+
+    .step-top span {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .step p {
+      margin: 6px 0 0 0;
+      color: var(--muted);
+    }
+
+    .gallery {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .shot {
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--stroke);
+      background: rgba(0, 0, 0, 0.35);
+    }
+
+    .shot img {
+      width: 100%;
+      height: 132px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .shot .cap {
+      padding: 8px 9px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .cta {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .cta a {
+      text-decoration: none;
+      color: #fff;
+      font-size: 12px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid var(--stroke);
+      background: rgba(0, 0, 0, 0.55);
+    }
+
+    .cta a:hover {
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--stroke);
+      background: rgba(0, 0, 0, 0.55);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 520px) {
       .icon-btn {
-        width: 40px;
-        height: 40px;
-        border-radius: 10px;
-        border: none;
-        background: rgba(0, 0, 0, 0.85);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        color: #f5f5f5;
-        font-size: 18px;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
-        backdrop-filter: blur(6px);
+        width: 38px;
+        height: 38px;
       }
 
-      .icon-btn:hover {
-        background: rgba(255, 255, 255, 0.06);
+      .gallery {
+        grid-template-columns: 1fr;
       }
+    }
+  </style>
+</head>
 
-      .icon-btn:active {
-        transform: scale(0.95);
-      }
+<body>
+  <div class="file-pill" id="file-name">assets/final_map_1-v1.glb</div>
 
-      #file-input {
-        display: none;
-      }
+  <div class="top-actions">
+    <button class="icon-btn" id="upload-btn" title="Upload model">⬆</button>
+    <button class="icon-btn" id="reset-btn" title="Reset view">⟳</button>
+    <button class="icon-btn" id="shot-btn" title="Screenshot">📷</button>
+    <input id="file-input" type="file" />
+  </div>
 
-      /* File name pill (top-left) */
-      .file-pill {
-        position: absolute;
-        top: 14px;
-        left: 14px;
-        padding: 4px 10px;
-        border-radius: 999px;
-        background: rgba(0, 0, 0, 0.7);
-        font-size: 11px;
-        max-width: 55vw;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        overflow: hidden;
-        z-index: 20;
-      }
+  <div class="drawer-toggle">
+    <button class="icon-btn" id="info-btn" title="Project info">ℹ</button>
+  </div>
 
-      /* Bottom hints */
-      .bottom-left-hint {
-        position: absolute;
-        left: 16px;
-        bottom: 18px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 12px;
-        opacity: 0.8;
-        z-index: 20;
-      }
-
-      .bottom-left-icon {
-        width: 18px;
-        height: 18px;
-        border-radius: 999px;
-        border: 1px solid rgba(255, 255, 255, 0.4);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 10px;
-      }
-
-      .bottom-center-device {
-        position: absolute;
-        left: 50%;
-        bottom: 18px;
-        transform: translateX(-50%);
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 12px;
-        opacity: 0.8;
-        z-index: 20;
-      }
-
-      .device-icon {
-        width: 18px;
-        height: 18px;
-        border-radius: 4px;
-        border: 1px solid rgba(255, 255, 255, 0.4);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 10px;
-      }
-    </style>
-  </head>
-
-  <body>
-    <!-- File name pill -->
-    <div class="file-pill" id="file-name">assets/final_map_1.glb</div>
-
-    <!-- Top icon bar -->
-    <div class="top-actions">
-      <!-- Upload -->
-      <button class="icon-btn" id="upload-btn" title="Upload model">
-        ⬆
-      </button>
-
-      <!-- Reset camera -->
-      <button class="icon-btn" id="reset-btn" title="Reset view">
-        ⟳
-      </button>
-
-      <!-- Screenshot placeholder -->
-      <button class="icon-btn" id="shot-btn" title="Screenshot">
-        📷
-      </button>
-
-      <input
-        id="file-input"
-        type="file"
-        
-      />
+  <aside class="drawer" id="drawer">
+    <div class="drawer-header">
+      <div class="drawer-title">
+        <h2>Yukon Community Garden — Reclamation Prototype</h2>
+        <p>
+          Digital twin + community co-design + storytelling nodes.<br />
+          Built with <strong>photogrammetry</strong> and <strong>Blender</strong>. REACH headset preview is in progress.
+        </p>
+      </div>
+      <button class="close-btn" id="close-drawer" title="Close">✕</button>
     </div>
 
-    <!-- Main viewer -->
-    <model-viewer
-      id="yukon-viewer"
-      src="assets/final_map_1-v1.glb"
-      alt="3D model viewer"
-      camera-controls
-      auto-rotate
-      autoplay
-      touch-action="pan-y"
-      exposure="1"
-      shadow-intensity="0.6"
-    >
-    </model-viewer>
+    <div class="drawer-body">
+      <div>
+        <span class="pill">Photogrammetry</span>
+        <span class="pill">Blender</span>
+        <span class="pill">GLB</span>
+        <span class="pill">Web Viewer</span>
+        <span class="pill">REACH (Headset Preview)</span>
+      </div>
 
-    <!-- Bottom hints -->
-    <div class="bottom-left-hint">
-      <div class="bottom-left-icon">↻</div>
-      <span>Drag to rotate</span>
+      <div class="section">
+        <h3>Project Summary</h3>
+        <p>
+          <strong>Reclamation</strong> is a city-wide initiative that combines immersive technology, community
+          storytelling,
+          workforce development, and environmental action to transform neglected spaces into vibrant, healthy, and
+          equitable places.
+          This prototype explores a community-garden intervention: residents can virtually design a re-greening plan in
+          a
+          digital twin, then carry those decisions into physical implementation.
+        </p>
+      </div>
+
+      <div class="section">
+        <h3>What You’re Looking At</h3>
+        <ul>
+          <li><strong>Digital twin (GLB)</strong> of a neighborhood site, viewable on web.</li>
+          <li><strong>Garden-only layout intent</strong>: beds + paths + gathering space confined to the lot boundary.
+          </li>
+          <li><strong>Signage concept</strong> designed to be fabricated as a 3D asset for the space.</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h3>Toolchain</h3>
+        <ul>
+          <li><strong>Capture:</strong> Photogrammetry (site imagery → reconstruction)</li>
+          <li><strong>Cleanup + Optimization:</strong> Blender (retopo/cleanup, scale, materials, export)</li>
+          <li><strong>Delivery:</strong> Web (model-viewer) + <strong>REACH headset preview (in progress)</strong></li>
+        </ul>
+        <p class="badge">Goal: keep it accessible on web, then add immersive headset walkthrough once REACH preview is
+          finalized.</p>
+      </div>
+
+      <div class="section">
+        <h3>Prototyping Flow</h3>
+        <div class="timeline">
+          <div class="step">
+            <div class="step-top"><strong>1. Site Discovery</strong><span>Find + document</span></div>
+            <p>Identify an underused lot and document constraints (lot boundary, access, circulation, safety,
+              neighboring homes/road).</p>
+          </div>
+
+          <div class="step">
+            <div class="step-top"><strong>2. Photogrammetry Capture</strong><span>Reality → mesh</span></div>
+            <p>Capture the space and reconstruct an initial 3D mesh to preserve real-world scale and context.</p>
+          </div>
+
+          <div class="step">
+            <div class="step-top"><strong>3 Blender Cleanup</strong><span>Optimize</span></div>
+            <p>Clean geometry, correct scale/orientation, optimize materials and export as a performant GLB for web +
+              headset.</p>
+          </div>
+
+          <div class="step">
+            <div class="step-top"><strong>4. Garden Program in the Twin</strong><span>Design inside boundary</span>
+            </div>
+            <p>Block out garden elements inside the lot only (beds, paths, seating), leaving roads untouched and
+              realistic.</p>
+          </div>
+
+          <div class="step">
+            <div class="step-top"><strong>5. REACH Headset Preview</strong><span>In progress</span></div>
+            <p>Build an immersive walkthrough so residents can experience the plan spatially before real-world buildout.
+            </p>
+          </div>
+
+          <div class="step">
+            <div class="step-top"><strong>6. Community Session</strong><span>Feedback loop</span></div>
+            <p>Use workshops to gather resident input, revise the layout, and prepare a build-ready plan and signage
+              assets.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Concept Images</h3>
+        <div class="gallery">
+          <div class="shot">
+            <img src="assets/community garden.png" alt="Community garden layout mockup" loading="lazy" />
+            <div class="cap">Garden layout mockup (beds + paths + gathering node), confined to the lot boundary.</div>
+          </div>
+
+          <div class="shot">
+            <img src="assets/ycg.png" alt="Yukon Community Garden sign concept" loading="lazy" />
+            <div class="cap">LA parks-style sign concept intended for Blender → 3D fabrication/placement.</div>
+          </div>
+        </div>
+
+        <div class="cta">
+          <a href="#" id="jump-reset">Reset camera view</a>
+          <a href="#" id="toggle-rotate">Toggle auto-rotate</a>
+          <!-- Optional: link to REACH experience when ready -->
+          <!-- <a href="https://your-reach-link" target="_blank" rel="noreferrer">Open REACH Preview</a> -->
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Next Steps</h3>
+        <ul>
+          <li>Finish REACH headset preview and publish a shareable link.</li>
+          <li>Add “story node” locations (AR portals) tied to resident narratives.</li>
+          <li>Finalize signage + wayfinding as 3D assets and place them in-scene.</li>
+          <li>Run a community co-design session and iterate toward build-ready drawings.</li>
+        </ul>
+      </div>
     </div>
+  </aside>
 
-    <div class="bottom-center-device">
-      <div class="device-icon" id="device-icon">💻</div>
-      <span id="device-label">Device</span>
-    </div>
+  <model-viewer id="yukon-viewer" src="assets/final_map_1-v1.glb" alt="Yukon Community Garden 3D model" camera-controls
+    auto-rotate autoplay touch-action="pan-y" exposure="1" shadow-intensity="0.6"></model-viewer>
 
-    <script>
-      // --- Device detection ---
-      function detectDevice() {
-        const ua = navigator.userAgent.toLowerCase();
+  <div class="bottom-left-hint">
+    <div class="bottom-left-icon">↻</div>
+    <span>Drag to rotate</span>
+  </div>
 
-        if (/iphone|ipod/.test(ua)) return "iPhone";
-        if (/ipad/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1))
-          return "iPad";
-        if (/android/.test(ua)) return "Android";
+  <div class="bottom-center-device">
+    <div class="device-icon" id="device-icon">💻</div>
+    <span id="device-label">Device</span>
+  </div>
 
-        // touch device but not "mobile" in UA → likely tablet
-        if (!/mobile/.test(ua) && "ontouchstart" in window) return "Tablet";
+  <script>
+    // --- Device detection ---
+    function detectDevice() {
+      const ua = navigator.userAgent.toLowerCase();
+      if (/iphone|ipod/.test(ua)) return "iPhone";
+      if (/ipad/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1))
+        return "iPad";
+      if (/android/.test(ua)) return "Android";
+      if (!/mobile/.test(ua) && "ontouchstart" in window) return "Tablet";
+      return "Desktop";
+    }
 
-        return "Desktop";
-      }
+    const iconMap = { iPhone: "📱", Android: "🤖", iPad: "📱", Tablet: "📱", Desktop: "💻" };
 
-      const iconMap = {
-        iPhone: "📱",
-        Android: "🤖",
-        iPad: "📱",
-        Tablet: "📱",
-        Desktop: "💻",
-      };
+    document.addEventListener("DOMContentLoaded", () => {
+      const labelEl = document.getElementById("device-label");
+      const iconEl = document.getElementById("device-icon");
+      const device = detectDevice();
+      if (labelEl) labelEl.textContent = device;
+      if (iconEl) iconEl.textContent = iconMap[device] || "💻";
+    });
 
-      document.addEventListener("DOMContentLoaded", () => {
-        const labelEl = document.getElementById("device-label");
-        const iconEl = document.getElementById("device-icon");
-        const device = detectDevice();
+    // --- Viewer controls ---
+    const viewer = document.getElementById("yukon-viewer");
+    const uploadBtn = document.getElementById("upload-btn");
+    const fileInput = document.getElementById("file-input");
+    const fileNameEl = document.getElementById("file-name");
+    const resetBtn = document.getElementById("reset-btn");
+    const shotBtn = document.getElementById("shot-btn");
 
-        if (labelEl) labelEl.textContent = device;
-        if (iconEl) iconEl.textContent = iconMap[device] || "💻";
-      });
+    uploadBtn.addEventListener("click", () => fileInput.click());
 
-      // --- Viewer controls ---
-      const viewer = document.getElementById("yukon-viewer");
-      const uploadBtn = document.getElementById("upload-btn");
-      const fileInput = document.getElementById("file-input");
-      const fileNameEl = document.getElementById("file-name");
-      const resetBtn = document.getElementById("reset-btn");
-      const shotBtn = document.getElementById("shot-btn");
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      const objectURL = URL.createObjectURL(file);
+      viewer.src = objectURL;
+      fileNameEl.textContent = file.name;
+    });
 
-      // Upload new model
-      uploadBtn.addEventListener("click", () => {
-        fileInput.click();
-      });
+    resetBtn.addEventListener("click", () => {
+      viewer.cameraOrbit = "0deg 75deg 100%";
+      viewer.cameraTarget = "auto auto auto";
+    });
 
-      fileInput.addEventListener("change", () => {
-        const file = fileInput.files[0];
-        if (!file) return;
-        const objectURL = URL.createObjectURL(file);
-        viewer.src = objectURL;
-        fileNameEl.textContent = file.name;
-      });
+    shotBtn.addEventListener("click", () => {
+      alert("Screenshot capture can be wired up later — placeholder for now.");
+    });
 
-      // Reset camera framing
-      resetBtn.addEventListener("click", () => {
-        viewer.cameraOrbit = "0deg 75deg 100%";
-        viewer.cameraTarget = "auto auto auto";
-      });
+    // --- Drawer ---
+    const drawer = document.getElementById("drawer");
+    const infoBtn = document.getElementById("info-btn");
+    const closeDrawer = document.getElementById("close-drawer");
 
-      // Screenshot placeholder (can wire to canvas capture later)
-      shotBtn.addEventListener("click", () => {
-        alert("Screenshot capture can be wired up later – placeholder for now.");
-      });
-    </script>
-  </body>
+    function openDrawer() { drawer.classList.add("open"); }
+    function hideDrawer() { drawer.classList.remove("open"); }
+
+    infoBtn.addEventListener("click", () => {
+      drawer.classList.contains("open") ? hideDrawer() : openDrawer();
+    });
+    closeDrawer.addEventListener("click", hideDrawer);
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") hideDrawer();
+    });
+
+    document.getElementById("jump-reset").addEventListener("click", (e) => {
+      e.preventDefault();
+      viewer.cameraOrbit = "0deg 75deg 100%";
+      viewer.cameraTarget = "auto auto auto";
+      hideDrawer();
+    });
+
+    document.getElementById("toggle-rotate").addEventListener("click", (e) => {
+      e.preventDefault();
+      viewer.autoRotate = !viewer.autoRotate;
+    });
+
+    window.addEventListener("load", () => {
+      setTimeout(() => {
+        openDrawer();
+      }, 600); // subtle delay for smoother UX
+    });
+  </script>
+</body>
+
 </html>
