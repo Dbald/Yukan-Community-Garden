@@ -94,6 +94,21 @@
       z-index: 30;
     }
 
+    .location-pill {
+  position: absolute;
+  top: 44px;
+  left: 14px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.85);
+  z-index: 30;
+  white-space: nowrap;
+}
+
+
     .bottom-left-hint {
       position: absolute;
       left: 16px;
@@ -360,6 +375,11 @@
 <body>
   <div class="file-pill" id="file-name">assets/final_map_1-v1.glb</div>
 
+  <div class="location-pill">
+  📍 Inglewood, CA — Yukon Ave S & W 107th St
+</div>
+
+
   <div class="top-actions">
     <button class="icon-btn" id="upload-btn" title="Upload model">⬆</button>
     <button class="icon-btn" id="reset-btn" title="Reset view">⟳</button>
@@ -376,9 +396,12 @@
       <div class="drawer-title">
         <h2>Yukon Community Garden — Reclamation Prototype</h2>
         <p>
-          Digital twin + community co-design + storytelling nodes.<br />
-          Built with <strong>photogrammetry</strong> and <strong>Blender</strong>. REACH headset preview is in progress.
+          <strong>Inglewood, CA</strong><br />
+          Corner of <strong>Yukon Ave S</strong> & <strong>W 107th St</strong><br />
+          Digital twin built with <strong>photogrammetry</strong> and <strong>Blender</strong>.
+          REACH headset preview in progress.
         </p>
+
       </div>
       <button class="close-btn" id="close-drawer" title="Close">✕</button>
     </div>
@@ -414,6 +437,17 @@
           <li><strong>Signage concept</strong> designed to be fabricated as a 3D asset for the space.</li>
         </ul>
       </div>
+
+      <div class="section">
+  <h3>Site Location</h3>
+  <p>
+    This prototype is based on a real site in <strong>Inglewood, California</strong>,
+    located at the corner of <strong>Yukon Ave S</strong> and <strong>W 107th St</strong>.
+    The surrounding residential context and adjacent roadway were intentionally preserved
+    to ensure realistic design constraints and community relevance.
+  </p>
+</div>
+
 
       <div class="section">
         <h3>Toolchain</h3>
